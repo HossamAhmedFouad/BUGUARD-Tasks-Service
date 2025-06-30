@@ -18,18 +18,17 @@ def run_tests():
         import pytest
     except ImportError:
         print("❌ pytest not found. Installing...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "pytest", "pytest-asyncio"])
+        venv_python = ".\\venv\\Scripts\\python.exe" if os.name == "nt" else "./venv/bin/python"
+        subprocess.run([venv_python, "-m", "pip", "install", "pytest", "pytest-asyncio"])
     
     # Set environment variables for testing
     os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     os.environ["DEBUG"] = "true"
     
-    # Run tests
+    # Run tests using virtual environment Python - run all tests in a single session
+    venv_python = ".\\venv\\Scripts\\python.exe" if os.name == "nt" else "./venv/bin/python"
     test_commands = [
-        ["python", "-m", "pytest", "tests/", "-v", "--tb=short"],
-        ["python", "-m", "pytest", "tests/test_models.py", "-v"],
-        ["python", "-m", "pytest", "tests/test_services.py", "-v"],
-        ["python", "-m", "pytest", "tests/test_api.py", "-v"]
+        [venv_python, "-m", "pytest", "tests/", "-v", "--tb=short"]
     ]
     
     for cmd in test_commands:
@@ -48,9 +47,10 @@ def run_api_tests():
     print("\n🚀 Running API Integration Tests")
     print("-" * 30)
     
-    # Run API tests using pytest
+    # Run API tests using pytest with virtual environment Python
+    venv_python = ".\\venv\\Scripts\\python.exe" if os.name == "nt" else "./venv/bin/python"
     test_commands = [
-        ["python", "-m", "pytest", "tests/test_api.py", "-v", "--tb=short"]
+        [venv_python, "-m", "pytest", "tests/test_api.py", "-v", "--tb=short"]
     ]
     
     for cmd in test_commands:

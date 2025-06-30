@@ -1,37 +1,23 @@
 import pytest
-from fastapi.testclient import TestClient
 from datetime import datetime, timedelta
 import json
-
-from app.main import app
-
-client = TestClient(app)
 
 
 class TestAPIEndpoints:
     """Integration tests for API endpoints"""
     
-    def setup_method(self):
-        """Setup test environment - clean database"""
-        # Clean up any existing tasks
-        response = client.get("/tasks")
-        if response.status_code == 200:
-            tasks = response.json()["tasks"]
-            for task in tasks:
-                client.delete(f"/tasks/{task['id']}")
-    
-    def test_root_endpoint(self):
+    def test_root_endpoint(self, test_client):
         """Test root endpoint"""
-        response = client.get("/")
+        response = test_client.get("/")
         assert response.status_code == 200
         
         data = response.json()
         assert data["title"] == "Task Management API"
         assert "endpoints" in data
     
-    def test_health_check(self):
+    def test_health_check(self, test_client):
         """Test health check endpoint"""
-        response = client.get("/health")
+        response = test_client.get("/health")
         assert response.status_code == 200
         
         data = response.json()
@@ -39,7 +25,7 @@ class TestAPIEndpoints:
         assert "timestamp" in data
         assert data["version"] == "1.0.0"
     
-    def test_create_task_success(self):
+    def test_create_task_success(self, test_client):
         """Test successful task creation"""
         future_date = datetime.utcnow() + timedelta(days=1)
         task_data = {
@@ -50,7 +36,7 @@ class TestAPIEndpoints:
             "assigned_to": "John Doe"
         }
         
-        response = client.post("/tasks", json=task_data)
+        response = test_client.post("/tasks", json=task_data)
         assert response.status_code == 201
         
         data = response.json()
@@ -59,10 +45,8 @@ class TestAPIEndpoints:
         assert data["status"] == "pending"  # default
         assert "id" in data
         assert "created_at" in data
-        
-        return data["id"]  # Return for cleanup
     
-    def test_create_task_validation_error(self):
+    def test_create_task_validation_error(self, test_client):
         """Test task creation with validation errors"""
         # Empty title
         task_data = {
@@ -70,7 +54,7 @@ class TestAPIEndpoints:
             "description": "Test Description"
         }
         
-        response = client.post("/tasks", json=task_data)
+        response = test_client.post("/tasks", json=task_data)
         assert response.status_code == 422
         
         # Past due date
@@ -80,31 +64,48 @@ class TestAPIEndpoints:
             "due_date": past_date.isoformat()
         }
         
-        response = client.post("/tasks", json=task_data)
+        response = test_client.post("/tasks", json=task_data)
         assert response.status_code == 422
     
-    def test_get_tasks(self):
+    def test_get_tasks(self, test_client):
         """Test getting all tasks"""
         # Create a test task first
-        task_id = self.test_create_task_success()
+        future_date = datetime.utcnow() + timedelta(days=1)
+        task_data = {
+            "title": "Test Task",
+            "description": "Test Description",
+            "priority": "high",
+            "due_date": future_date.isoformat(),
+            "assigned_to": "John Doe"
+        }
         
-        response = client.get("/tasks")
+        create_response = test_client.post("/tasks", json=task_data)
+        task_id = create_response.json()["id"]
+        
+        response = test_client.get("/tasks")
         assert response.status_code == 200
         
         data = response.json()
         assert "tasks" in data
         assert "total" in data
         assert len(data["tasks"]) >= 1
-        
-        # Cleanup
-        client.delete(f"/tasks/{task_id}")
     
-    def test_get_task_by_id(self):
+    def test_get_task_by_id(self, test_client):
         """Test getting specific task by ID"""
         # Create a test task first
-        task_id = self.test_create_task_success()
+        future_date = datetime.utcnow() + timedelta(days=1)
+        task_data = {
+            "title": "Test Task",
+            "description": "Test Description",
+            "priority": "high",
+            "due_date": future_date.isoformat(),
+            "assigned_to": "John Doe"
+        }
         
-        response = client.get(f"/tasks/{task_id}")
+        create_response = test_client.post("/tasks", json=task_data)
+        task_id = create_response.json()["id"]
+        
+        response = test_client.get(f"/tasks/{task_id}")
         assert response.status_code == 200
         
         data = response.json()
@@ -112,16 +113,23 @@ class TestAPIEndpoints:
         assert data["title"] == "Test Task"
         
         # Test non-existent task
-        response = client.get("/tasks/99999")
+        response = test_client.get("/tasks/99999")
         assert response.status_code == 404
-        
-        # Cleanup
-        client.delete(f"/tasks/{task_id}")
     
-    def test_update_task(self):
+    def test_update_task(self, test_client):
         """Test task update"""
         # Create a test task first
-        task_id = self.test_create_task_success()
+        future_date = datetime.utcnow() + timedelta(days=1)
+        task_data = {
+            "title": "Test Task",
+            "description": "Test Description",
+            "priority": "high",
+            "due_date": future_date.isoformat(),
+            "assigned_to": "John Doe"
+        }
+        
+        create_response = test_client.post("/tasks", json=task_data)
+        task_id = create_response.json()["id"]
         
         # Update the task
         update_data = {
@@ -130,7 +138,7 @@ class TestAPIEndpoints:
             "priority": "urgent"
         }
         
-        response = client.put(f"/tasks/{task_id}", json=update_data)
+        response = test_client.put(f"/tasks/{task_id}", json=update_data)
         assert response.status_code == 200
         
         data = response.json()
@@ -140,19 +148,26 @@ class TestAPIEndpoints:
         assert data["updated_at"] is not None
         
         # Test non-existent task update
-        response = client.put("/tasks/99999", json=update_data)
+        response = test_client.put("/tasks/99999", json=update_data)
         assert response.status_code == 404
-        
-        # Cleanup
-        client.delete(f"/tasks/{task_id}")
     
-    def test_delete_task(self):
+    def test_delete_task(self, test_client):
         """Test task deletion"""
         # Create a test task first
-        task_id = self.test_create_task_success()
+        future_date = datetime.utcnow() + timedelta(days=1)
+        task_data = {
+            "title": "Test Task",
+            "description": "Test Description",
+            "priority": "high",
+            "due_date": future_date.isoformat(),
+            "assigned_to": "John Doe"
+        }
+        
+        create_response = test_client.post("/tasks", json=task_data)
+        task_id = create_response.json()["id"]
         
         # Delete the task
-        response = client.delete(f"/tasks/{task_id}")
+        response = test_client.delete(f"/tasks/{task_id}")
         assert response.status_code == 200
         
         data = response.json()
@@ -160,27 +175,27 @@ class TestAPIEndpoints:
         assert "deleted successfully" in data["message"]
         
         # Verify task is deleted
-        response = client.get(f"/tasks/{task_id}")
+        response = test_client.get(f"/tasks/{task_id}")
         assert response.status_code == 404
         
         # Test deleting non-existent task
-        response = client.delete("/tasks/99999")
+        response = test_client.delete("/tasks/99999")
         assert response.status_code == 404
     
-    def test_filter_tasks_by_status(self):
+    def test_filter_tasks_by_status(self, test_client):
         """Test filtering tasks by status"""
         # Create test tasks with different statuses
         task1_data = {"title": "Pending Task", "status": "pending"}
         task2_data = {"title": "In Progress Task", "status": "in_progress"}
         
-        response1 = client.post("/tasks", json=task1_data)
-        response2 = client.post("/tasks", json=task2_data)
+        response1 = test_client.post("/tasks", json=task1_data)
+        response2 = test_client.post("/tasks", json=task2_data)
         
         task1_id = response1.json()["id"]
         task2_id = response2.json()["id"]
         
         # Filter by pending status
-        response = client.get("/tasks/status/pending")
+        response = test_client.get("/tasks/status/pending")
         assert response.status_code == 200
         
         data = response.json()
@@ -188,7 +203,7 @@ class TestAPIEndpoints:
         assert len(pending_tasks) >= 1
         
         # Filter by in_progress status
-        response = client.get("/tasks/status/in_progress")
+        response = test_client.get("/tasks/status/in_progress")
         assert response.status_code == 200
         
         data = response.json()
@@ -196,23 +211,23 @@ class TestAPIEndpoints:
         assert len(in_progress_tasks) >= 1
         
         # Cleanup
-        client.delete(f"/tasks/{task1_id}")
-        client.delete(f"/tasks/{task2_id}")
+        test_client.delete(f"/tasks/{task1_id}")
+        test_client.delete(f"/tasks/{task2_id}")
     
-    def test_filter_tasks_by_priority(self):
+    def test_filter_tasks_by_priority(self, test_client):
         """Test filtering tasks by priority"""
         # Create test tasks with different priorities
         task1_data = {"title": "Low Priority Task", "priority": "low"}
         task2_data = {"title": "High Priority Task", "priority": "high"}
         
-        response1 = client.post("/tasks", json=task1_data)
-        response2 = client.post("/tasks", json=task2_data)
+        response1 = test_client.post("/tasks", json=task1_data)
+        response2 = test_client.post("/tasks", json=task2_data)
         
         task1_id = response1.json()["id"]
         task2_id = response2.json()["id"]
         
         # Filter by high priority
-        response = client.get("/tasks/priority/high")
+        response = test_client.get("/tasks/priority/high")
         assert response.status_code == 200
         
         data = response.json()
@@ -220,23 +235,23 @@ class TestAPIEndpoints:
         assert len(high_priority_tasks) >= 1
         
         # Cleanup
-        client.delete(f"/tasks/{task1_id}")
-        client.delete(f"/tasks/{task2_id}")
+        test_client.delete(f"/tasks/{task1_id}")
+        test_client.delete(f"/tasks/{task2_id}")
     
-    def test_search_tasks(self):
+    def test_search_tasks(self, test_client):
         """Test task search functionality"""
         # Create test tasks
         task1_data = {"title": "API Documentation", "description": "Write API docs"}
         task2_data = {"title": "User Interface", "description": "Design UI components"}
         
-        response1 = client.post("/tasks", json=task1_data)
-        response2 = client.post("/tasks", json=task2_data)
+        response1 = test_client.post("/tasks", json=task1_data)
+        response2 = test_client.post("/tasks", json=task2_data)
         
         task1_id = response1.json()["id"]
         task2_id = response2.json()["id"]
         
         # Search for 'API'
-        response = client.get("/tasks?search=API")
+        response = test_client.get("/tasks?search=API")
         assert response.status_code == 200
         
         data = response.json()
@@ -245,7 +260,7 @@ class TestAPIEndpoints:
         assert found_api_task
         
         # Search for 'UI'
-        response = client.get("/tasks?search=UI")
+        response = test_client.get("/tasks?search=UI")
         assert response.status_code == 200
         
         data = response.json()
@@ -253,10 +268,10 @@ class TestAPIEndpoints:
         assert found_ui_task
         
         # Cleanup
-        client.delete(f"/tasks/{task1_id}")
-        client.delete(f"/tasks/{task2_id}")
+        test_client.delete(f"/tasks/{task1_id}")
+        test_client.delete(f"/tasks/{task2_id}")
     
-    def test_sort_tasks(self):
+    def test_sort_tasks(self, test_client):
         """Test task sorting"""
         # Create test tasks
         task1_data = {"title": "Alpha Task", "priority": "low"}
@@ -264,15 +279,15 @@ class TestAPIEndpoints:
         task3_data = {"title": "Gamma Task", "priority": "medium"}
         
         responses = [
-            client.post("/tasks", json=task1_data),
-            client.post("/tasks", json=task2_data),
-            client.post("/tasks", json=task3_data)
+            test_client.post("/tasks", json=task1_data),
+            test_client.post("/tasks", json=task2_data),
+            test_client.post("/tasks", json=task3_data)
         ]
         
         task_ids = [r.json()["id"] for r in responses]
         
         # Sort by title ascending
-        response = client.get("/tasks?sort_by=title&sort_order=asc")
+        response = test_client.get("/tasks?sort_by=title&sort_order=asc")
         assert response.status_code == 200
         
         data = response.json()
@@ -284,7 +299,7 @@ class TestAPIEndpoints:
         assert alpha_index < beta_index
         
         # Sort by priority ascending (low -> high)
-        response = client.get("/tasks?sort_by=priority&sort_order=asc")
+        response = test_client.get("/tasks?sort_by=priority&sort_order=asc")
         assert response.status_code == 200
         
         data = response.json()
@@ -298,19 +313,19 @@ class TestAPIEndpoints:
         
         # Cleanup
         for task_id in task_ids:
-            client.delete(f"/tasks/{task_id}")
+            test_client.delete(f"/tasks/{task_id}")
     
-    def test_pagination(self):
+    def test_pagination(self, test_client):
         """Test pagination"""
         # Create multiple test tasks
         task_ids = []
         for i in range(5):
             task_data = {"title": f"Task {i+1}"}
-            response = client.post("/tasks", json=task_data)
+            response = test_client.post("/tasks", json=task_data)
             task_ids.append(response.json()["id"])
         
         # Test pagination
-        response = client.get("/tasks?skip=0&limit=2")
+        response = test_client.get("/tasks?skip=0&limit=2")
         assert response.status_code == 200
         
         data = response.json()
@@ -320,7 +335,7 @@ class TestAPIEndpoints:
         assert data["total"] >= 5
         
         # Test second page
-        response = client.get("/tasks?skip=2&limit=2")
+        response = test_client.get("/tasks?skip=2&limit=2")
         assert response.status_code == 200
         
         data = response.json()
@@ -329,15 +344,15 @@ class TestAPIEndpoints:
         
         # Cleanup
         for task_id in task_ids:
-            client.delete(f"/tasks/{task_id}")
+            test_client.delete(f"/tasks/{task_id}")
     
-    def test_bulk_operations(self):
+    def test_bulk_operations(self, test_client):
         """Test bulk update and delete operations"""
         # Create test tasks
         task_ids = []
         for i in range(3):
             task_data = {"title": f"Bulk Task {i+1}", "priority": "low"}
-            response = client.post("/tasks", json=task_data)
+            response = test_client.post("/tasks", json=task_data)
             task_ids.append(response.json()["id"])
         
         # Test bulk update
@@ -349,7 +364,7 @@ class TestAPIEndpoints:
             }
         }
         
-        response = client.put("/tasks/bulk", json=bulk_update_data)
+        response = test_client.put("/tasks/bulk", json=bulk_update_data)
         assert response.status_code == 200
         
         data = response.json()
@@ -358,7 +373,7 @@ class TestAPIEndpoints:
         
         # Verify updates
         for task_id in task_ids:
-            response = client.get(f"/tasks/{task_id}")
+            response = test_client.get(f"/tasks/{task_id}")
             task = response.json()
             assert task["priority"] == "high"
             assert task["assigned_to"] == "Team Lead"
@@ -366,7 +381,7 @@ class TestAPIEndpoints:
         # Test bulk delete
         bulk_delete_data = {"task_ids": task_ids}
         
-        response = client.delete("/tasks/bulk", json=bulk_delete_data)
+        response = test_client.request("DELETE", "/tasks/bulk", json=bulk_delete_data)
         assert response.status_code == 200
         
         data = response.json()
@@ -375,12 +390,12 @@ class TestAPIEndpoints:
         
         # Verify deletion
         for task_id in task_ids:
-            response = client.get(f"/tasks/{task_id}")
+            response = test_client.get(f"/tasks/{task_id}")
             assert response.status_code == 404
     
-    def test_task_statistics(self):
+    def test_task_statistics(self, test_client):
         """Test task statistics endpoint"""
-        response = client.get("/tasks/statistics")
+        response = test_client.get("/tasks/statistics")
         assert response.status_code == 200
         
         data = response.json()
